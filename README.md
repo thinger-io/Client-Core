@@ -1,4 +1,4 @@
-Thinger client is a generic library that allows connecting your IoT devices to the thinger.io cloud platform, or even your private server deployment. This is a hardware agnostic library that can be compiled in almost any platform.
+Thinger client is a generic library that allows connecting your IoT devices to the [thinger.io](http://thinger.io "thinger.io IoT Cloud Platform") cloud platform, or even your private server deployment. This is a hardware agnostic library that can be compiled in almost any platform.
 
 ## TODO
 
