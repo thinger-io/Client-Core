@@ -2,14 +2,13 @@ Thinger client is a generic library that allows connecting your IoT devices to t
 
 ## TODO
 
-This library is currently being developed and should not be integrated in any production device until it is more mature and tested. The library interface may change as the library evolve to a stable version. Some things that requires attention now are:
+This library is currently being developed and should not be integrated in any production device until it is more mature and tested. The library interface may change as it evolve to a stable version. Some things that requires attention now are:
 
  - Document code
  - Test with multiple platforms (Already working on AVR, ARM, x86)
  - Support big endian architectures (this requires little working on pson)
  - Add unitary tests
  - Provide examples
- - Document code
  - Improve the library
 
 ## License
