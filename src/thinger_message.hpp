@@ -1,6 +1,6 @@
 // The MIT License (MIT)
 //
-// Copyright (c) 2016 THINGER LTD
+// Copyright (c) 2017 THINK BIG LABS SL
 // Author: alvarolb@gmail.com (Alvaro Luis Bustamante)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -41,10 +41,10 @@ namespace thinger{
         enum fields{
             STREAM_ID       = 1,
             SIGNAL_FLAG     = 2,
-            UNUSED          = 3,
+            IDENTIFIER      = 3,
             RESOURCE        = 4,
-            UNUSED2         = 5,
-            PSON_PAYLOAD    = 6
+            UNUSED1         = 5,
+            PAYLOAD         = 6
         };
 
         // flags for describing a thinger message
@@ -62,7 +62,9 @@ namespace thinger{
             AUTH                = 5,
             STREAM_EVENT        = 6,    // means that the message data is related to a stream event
             STREAM_SAMPLE       = 7,    // means that the message is related to a periodical streaming sample
-            CALL_ENDPOINT       = 8     // call the endpoint with the provided name (endpoint in resource, value passed in payload)
+            CALL_ENDPOINT       = 8,    // call the endpoint with the provided name (endpoint_id in identifier, value passed in payload)
+            CALL_DEVICE         = 9,    // call a given device (device_id in identifier, resource in resource, and value, passed in payload)
+            BUCKET_DATA         = 10    // call the bucket with the provided name (bucket_id in identifier, value passed in payload)
         };
 
     public:
@@ -74,6 +76,7 @@ namespace thinger{
         thinger_message(thinger_message& other) :
             stream_id(other.stream_id),
             flag(REQUEST_OK),
+            identifier(NULL),
             resource(NULL),
             data(NULL),
             data_allocated(false)
@@ -85,17 +88,20 @@ namespace thinger{
         thinger_message() :
                 stream_id(0),
                 flag(NONE),
+                identifier(NULL),
                 resource(NULL),
                 data(NULL),
                 data_allocated(false)
         {}
 
         ~thinger_message(){
+            // deallocate identifier
+            protoson::pool.destroy(identifier);
             // deallocate resource
-            destroy(resource, protoson::pool);
+            protoson::pool.destroy(resource);
             // deallocate paylaod if was allocated here
             if(data_allocated){
-                destroy(data, protoson::pool);
+                protoson::pool.destroy(data);
             }
         }
 
@@ -104,9 +110,11 @@ namespace thinger{
         uint16_t stream_id;
         /// used for setting a stream signal
         signal_flag flag;
-        /// used to identify a device resource
+        /// used to identify a device, an endpoint, or a bucket
+        protoson::pson* identifier;
+        /// used to identify an specific resource over the identifier
         protoson::pson* resource;
-        /// used to fill a data payload in the message
+        /// used to send a data payload in the message
         protoson::pson* data;
         /// flag to determine when the payload has been reserved
         bool data_allocated;
@@ -125,6 +133,10 @@ namespace thinger{
             return data!=NULL;
         }
 
+        bool has_identifier(){
+            return identifier!=NULL;
+        }
+
         bool has_resource(){
             return resource!=NULL;
         }
@@ -138,6 +150,30 @@ namespace thinger{
             thinger_message::flag = flag;
         }
 
+        void set_identifier(const char* id){
+            if(identifier==NULL){
+                identifier = protoson::pool.allocate<protoson::pson>();
+            }
+            (*identifier) = id;
+        }
+
+        void clean_identifier(){
+            protoson::pool.destroy(identifier);
+            identifier = NULL;
+        }
+
+        void clean_resource(){
+            protoson::pool.destroy(resource);
+            resource = NULL;
+        }
+
+        void clean_data(){
+            if(data_allocated){
+                protoson::pool.destroy(data);
+            }
+            data = NULL;
+        }
+
     public:
 
         void operator=(const char* str){
@@ -146,7 +182,7 @@ namespace thinger{
 
         operator protoson::pson&(){
             if(data==NULL){
-                data = new (protoson::pool) protoson::pson;
+                data = protoson::pool.allocate<protoson::pson>();
                 data_allocated = true;
             }
             return *data;
@@ -158,9 +194,16 @@ namespace thinger{
 
         protoson::pson& get_resources(){
             if(resource==NULL){
-                resource = new (protoson::pool) protoson::pson;
+                resource = protoson::pool.allocate<protoson::pson>();
             }
             return *resource;
+        }
+
+        protoson::pson& get_identifier(){
+            if(identifier==NULL){
+                identifier = protoson::pool.allocate<protoson::pson>();
+            }
+            return *identifier;
         }
 
         protoson::pson& get_data(){

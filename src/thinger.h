@@ -1,6 +1,6 @@
 // The MIT License (MIT)
 //
-// Copyright (c) 2016 THINGER LTD
+// Copyright (c) 2017 THINK BIG LABS SL
 // Author: alvarolb@gmail.com (Alvaro Luis Bustamante)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -105,27 +105,77 @@ namespace thinger{
             return read_message(response) && response.get_signal_flag() == thinger_message::REQUEST_OK;
         }
 
+        bool call_device(const char* device_name, const char* resource_name){
+            thinger_message message;
+            message.set_signal_flag(thinger_message::CALL_DEVICE);
+            message.set_identifier(device_name);
+            message.resources().add(resource_name);
+            return send_message(message);
+        }
+
+        bool call_device(const char* device_name, const char* resource_name, pson& data){
+            thinger_message message;
+            message.set_signal_flag(thinger_message::CALL_DEVICE);
+            message.set_identifier(device_name);
+            message.resources().add(resource_name);
+            message.set_data(data);
+            return send_message(message);
+        }
+
+        bool call_device(const char* device_name, const char* resource_name, thinger_resource& resource){
+            thinger_message message;
+            message.set_signal_flag(thinger_message::CALL_DEVICE);
+            message.set_identifier(device_name);
+            message.resources().add(resource_name);
+            resource.fill_output(message.get_data());
+            return send_message(message);
+        }
+
         bool call_endpoint(const char* endpoint_name){
             thinger_message message;
             message.set_signal_flag(thinger_message::CALL_ENDPOINT);
-            message.resources().add(endpoint_name);
+            message.set_identifier(endpoint_name);
             return send_message(message);
         }
 
         bool call_endpoint(const char* endpoint_name, pson& data){
             thinger_message message;
             message.set_signal_flag(thinger_message::CALL_ENDPOINT);
+            message.set_identifier(endpoint_name);
             message.set_data(data);
-            message.resources().add(endpoint_name);
             return send_message(message);
         }
 
         bool call_endpoint(const char* endpoint_name, thinger_resource& resource){
             thinger_message message;
             message.set_signal_flag(thinger_message::CALL_ENDPOINT);
-            message.resources().add(endpoint_name);
-            resource.fill_api_io(message.get_data());
+            message.set_identifier(endpoint_name);
+            resource.fill_output(message.get_data());
             return send_message(message);
+        }
+
+        bool call_endpoint(const char* endpoint_name, const char* resource_name){
+            return call_endpoint(endpoint_name, resources_[resource_name]);
+        }
+
+        bool write_bucket(const char* bucket_id, pson& data){
+            thinger_message message;
+            message.set_signal_flag(thinger_message::BUCKET_DATA);
+            message.set_identifier(bucket_id);
+            message.set_data(data);
+            return send_message(message);
+        }
+
+        bool write_bucket(const char* bucket_id, thinger_resource& resource){
+            thinger_message message;
+            message.set_signal_flag(thinger_message::BUCKET_DATA);
+            message.set_identifier(bucket_id);
+            resource.fill_output(message.get_data());
+            return send_message(message);
+        }
+
+        bool write_bucket(const char* bucket_id, const char* resource_name){
+            return write_bucket(bucket_id, resources_[resource_name]);
         }
 
         /**
@@ -140,6 +190,10 @@ namespace thinger{
             return false;
         }
 
+        bool stream(const char* resource){
+            return stream(resources_[resource]);
+        }
+
         bool send_message(thinger_message& message)
         {
             thinger_encoder sink;
@@ -148,6 +202,11 @@ namespace thinger{
             encoder.pb_encode_varint(sink.bytes_written());
             encoder.encode(message);
             return write(NULL, 0, true);
+            /* TODO test this properly. Some devices (like AT based ones)
+             * may fail to write, but are not necessarily disconnected */
+            //bool result = write(NULL, 0, true);
+            //if(!result) disconnected();
+            //return result;
         }
 
         void handle(unsigned long current_time, bool bytes_available)
@@ -183,30 +242,30 @@ namespace thinger{
         }
 
         bool read_message(thinger_message& message){
-            uint8_t type = decoder.pb_decode_varint32();
-            switch (type){
-                case MESSAGE: {
-                    size_t size = decoder.pb_decode_varint32();
-                    decoder.decode(message, size);
+            uint32_t type = 0;
+            if(decoder.pb_decode_varint32(type)){
+                switch (type){
+                    case MESSAGE: {
+                        uint32_t size = 0;
+                        return decoder.pb_decode_varint32(size) &&
+                               decoder.decode(message, size);
+                    }
+                    case KEEP_ALIVE: {
+                        keep_alive_response = true;
+                        decoder.pb_skip_varint();
+                    }
                 }
-                    break;
-                case KEEP_ALIVE: {
-                    size_t size = decoder.pb_decode_varint32();
-                    keep_alive_response = true;
-                }
-                    return false;
-                default:
-                    return false;
             }
-            return true;
+            return false;
         }
 
         bool handle_input(){
             thinger_message message;
             if(read_message(message)){
                 handle_request_received(message);
+                return true;
             }
-            return true;
+            return false;
         }
 
     private:
@@ -225,7 +284,6 @@ namespace thinger{
                         break;
                     }
                     const char* resource = it.item();
-
                     if(it.has_next()){
                         thing_resource = thing_resource == NULL ? resources_.find(resource) : thing_resource->find(resource);
                         if(thing_resource==NULL) {
@@ -261,8 +319,12 @@ namespace thinger{
                     }
                 }
             }
-            send_message(response);
+            // do not send responses to requests without a stream id as they will not reach any destination!
+            if(response.get_stream_id()!=0){
+                send_message(response);
+            }
         }
+
     };
 }
 
